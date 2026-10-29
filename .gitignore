@@ -8,4 +8,4 @@ results.jsonl
 *.egg-info/
 dist/
 build/
-.streamlit/
+.streamlit/secrets.toml

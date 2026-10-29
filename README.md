@@ -21,6 +21,16 @@ A multi-agent system that automates end-to-end invoice processing from raw docum
          └───────────────┘
          Self-correction loop
 ```
+## Business Impact
+
+This system addresses Acme Corp's $2M/year problem:
+
+- **30% error rate to near-zero**: LLM extraction handles messy formats; deterministic validation catches mismatches programmatically; self-correction loop fixes OCR/extraction errors
+- **5-day delays to seconds**: End-to-end processing in seconds per invoice, with auto-approval for clean low-value invoices
+- **Frustrated stakeholders to transparency**: Full audit trail with timestamped reasoning at every stage, available in both CLI and dashboard
+- **Fraud risk to proactive detection**: Multi-signal fraud assessment by LLM, with deterministic safety net for duplicate payments and unknown vendors
+- **Compliance**: Three-way matching (PO, receipt, invoice), three-tier approval thresholds, CFO sign-off for high-value invoices, all decisions persisted to database
+
 
 ### Agent Details
 
@@ -53,8 +63,8 @@ A multi-agent system that automates end-to-end invoice processing from raw docum
 
 ```bash
 # 1. Clone and enter the repo
-git clone <your-repo-url>
-cd galatiq-case-invoices
+git clone https://github.com/darashizuka/acme_invoice_system.git
+cd acme_invoice_system
 
 # 2. Create virtual environment
 python -m venv venv
@@ -66,7 +76,7 @@ pip install -r requirements.txt
 
 # 4. Configure LLM provider (create .env from template)
 cp .env.example .env
-# Edit .env and add your API key (see Provider Setup below)
+# Edit .env and just add your grok API key (see Provider Setup below)
 
 # 5. Initialize inventory database
 python setup_db.py
@@ -86,7 +96,7 @@ streamlit run app.py
 The system works with any OpenAI-compatible API. Configure in `.env`:
 
 ```bash
-# xAI Grok (preferred — aligns with Galatiq's stack)
+# xAI Grok (main reasoning engine of this system)
 XAI_API_KEY=your_xai_api_key_here
 
 # OR Groq (free tier for testing)
@@ -98,10 +108,8 @@ OPENAI_API_KEY=your_openai_api_key_here
 # OR any OpenAI-compatible provider
 LLM_BASE_URL=https://api.x.ai/v1
 LLM_API_KEY=your_key
-LLM_MODEL=grok-3
+LLM_MODEL=grok-4.7
 ```
-
-Priority: `LLM_*` env vars > `XAI_API_KEY` > `GROQ_API_KEY` > `OPENAI_API_KEY`
 
 ## CLI Usage
 
@@ -128,12 +136,15 @@ python main.py --batch=data/invoices --db=custom_inventory.db
 streamlit run app.py
 ```
 
+![Streamlit](dashboard.png)
+
 Features:
 - **Multi-file upload** — upload one or more invoices, process all with a progress bar
 - **Pipeline visualization** — color-coded stage progress (green/blue/gray/red)
 - **Summary metrics** — approved/rejected/held/error counts when processing multiple files
 - **Detailed results** — extraction confidence, vendor checks, inventory checks, fraud signals, approval reasoning with reflection
 - **Export** — download results as JSON Lines
+- **Multimodal Support** — Scanned PDFs and images (PNG, JPG) are handled without OCR dependencies. This works with vision-capable models (xAI Grok, OpenAI GPT-4o). On text-only providers (Groq), scanned PDFs will fail gracefully with a clear error.
 
 ## Test Scenarios Covered
 
@@ -205,12 +216,52 @@ The system handles all edge cases (expanded test cases in invoices2 folder):
 | **UI** | Streamlit | Rapid dashboard development, interactive, built-in data display |
 | **PDF Parsing** | pdfplumber | Reliable text + table extraction from PDFs |
 
-## Business Impact
+## Testing
 
-This system addresses Acme Corp's $2M/year problem:
+### Deterministic Tests (no API key needed)
 
-- **30% error rate to near-zero**: LLM extraction handles messy formats; deterministic validation catches mismatches programmatically; self-correction loop fixes OCR/extraction errors
-- **5-day delays to seconds**: End-to-end processing in seconds per invoice, with auto-approval for clean low-value invoices
-- **Frustrated stakeholders to transparency**: Full audit trail with timestamped reasoning at every stage, available in both CLI and dashboard
-- **Fraud risk to proactive detection**: Multi-signal fraud assessment by LLM, with deterministic safety net for duplicate payments and unknown vendors
-- **Compliance**: Three-way matching (PO, receipt, invoice), three-tier approval thresholds, CFO sign-off for high-value invoices, all decisions persisted to database
+```bash
+python -m pytest tests/ --ignore=tests/test_golden.py -q
+```
+
+**69 tests** across 5 test files, covering:
+
+- **`test_parsers.py`** — File format parsing (TXT, JSON, CSV, XML, PDF text extraction, image base64 encoding), edge cases (empty files, unknown formats)
+- **`test_inventory_db.py`** — Vendor lookup with fuzzy matching, item checks, duplicate detection, payment recording, FX rate lookups, invoice number normalization
+- **`test_validation.py`** — Arithmetic validation ($0.01 tolerance), pricing deviation detection, data integrity checks (missing fields, negative quantities), fraud keyword scanning
+- **`test_approval.py`** — Safety override logic: proves high risk score does NOT trigger override, fraud signals do NOT trigger override, only duplicates and unknown vendors do. Tests both `_should_override` and `_apply_override`.
+- **`test_pipeline.py`** — 12 full pipeline tests with mocked LLM: clean invoice, stock mismatch, unknown item, self-correction loop, fraud detection, duplicate blocking, foreign currency, inactive vendor, hold vendor, arithmetic error
+
+### Golden Integration Tests (requires API key added in env)
+
+```bash
+python -m pytest tests/test_golden.py -q
+```
+
+**35 integration tests** that run real invoices through the full pipeline with a live LLM. These assert deterministic outcomes (decision, payment status, flags) while allowing LLM-generated text to vary. Covers all 16 scenarios in the test scenarios table plus multi-format variants (PDF, CSV, XML of the same invoice).
+
+## Database
+
+The system uses a single SQLite database (`acme_erp.db`) with 6 tables:
+
+| Table | Purpose |
+|-------|---------|
+| `vendors` | Vendor master — 14 vendors with status (active/hold/inactive), currency, payment terms |
+| `items` | Item master — reference prices for three-way matching |
+| `inventory` | Warehouse stock levels for stock mismatch detection |
+| `payments` | Payment ledger — records all paid invoices for duplicate prevention |
+| `processed_invoices` | Audit log — every processed invoice with decision and timestamp |
+| `fx_rates` | Foreign exchange rates for multi-currency USD conversion |
+
+All decisions persist across runs. The Streamlit dashboard reads from `processed_invoices` to show a live overview of all processed invoices with their status.
+
+## Multimodal Support
+
+Scanned PDFs and images (PNG, JPG) are handled without OCR dependencies:
+
+1. **PDF with text** — `pdfplumber` extracts text directly (fast, deterministic)
+2. **Scanned PDF (no text)** — `pypdfium2` renders each page to an image, encodes as base64 PNG, sends inline to the LLM as a vision message
+3. **Image files** — Pillow reads the image, encodes as base64 PNG, same vision pipeline
+
+This works with vision-capable models (xAI Grok, OpenAI GPT-4o). On text-only providers (Groq), scanned PDFs will fail gracefully with a clear error.
+

@@ -20,7 +20,7 @@ def get_llm(temperature: float = 0) -> ChatOpenAI:
 
     if base_url and api_key:
         return ChatOpenAI(
-            model=model or "grok-3",
+            model=model or "grok-4.7",
             api_key=api_key,
             base_url=base_url,
             temperature=temperature,
@@ -30,7 +30,7 @@ def get_llm(temperature: float = 0) -> ChatOpenAI:
     xai_key = os.environ.get("XAI_API_KEY")
     if xai_key:
         return ChatOpenAI(
-            model=model or "grok-3",
+            model=model or "grok-4.7",
             api_key=xai_key,
             base_url="https://api.x.ai/v1",
             temperature=temperature,

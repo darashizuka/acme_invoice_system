@@ -17,7 +17,6 @@ import sys
 
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -41,12 +40,9 @@ def setup_logging(verbose: bool = False) -> None:
 def render_result(result: PipelineResult, verbose: bool = False) -> None:
     """Render a single invoice result with Rich formatting."""
     if result.error:
-        console.print(Panel(
-            f"[red bold]ERROR:[/] {result.error}\n"
-            f"Stage reached: {result.stage_reached}",
-            title=f"[red]{result.file_path}[/]",
-            border_style="red",
-        ))
+        console.print(f"\n[red bold]ERROR:[/] {result.error}")
+        console.print(f"[dim]Stage reached: {result.stage_reached}[/]")
+        console.print(f"[dim]File: {result.file_path}[/]\n")
         return
 
     inv = result.extraction.invoice if result.extraction else None
@@ -57,26 +53,25 @@ def render_result(result: PipelineResult, verbose: bool = False) -> None:
     decision_color = {"approved": "green", "rejected": "red", "needs_review": "yellow"}.get(
         decision, "white"
     )
+    decision_label = "HELD" if decision == "needs_review" else decision.upper()
 
     payment_status = result.payment.status if result.payment else "N/A"
     payment_color = {"paid": "green", "rejected": "red", "held": "yellow"}.get(
         payment_status, "white"
     )
 
-    header = Text()
-    header.append(f"{inv_num}", style="bold")
-    header.append(f" — {vendor}")
-    header.append(f"  |  ", style="dim")
-    header.append(f"{decision.upper()}", style=f"bold {decision_color}")
-    header.append(f"  →  ", style="dim")
-    header.append(f"{payment_status.upper()}", style=f"bold {payment_color}")
-
-    lines = []
+    console.print()
+    console.rule(f"[bold]{inv_num}[/] -- {vendor}", style="dim")
+    console.print(
+        f"  [{decision_color} bold]{decision_label}[/]"
+        f"  [dim]-->[/]  [{payment_color} bold]{payment_status.upper()}[/]"
+    )
+    console.print()
 
     if result.extraction:
         ext = result.extraction
-        lines.append(f"[bold]Extraction[/] (confidence: {ext.confidence:.0%})")
-        lines.append(f"  Total: {inv.currency} {inv.total:,.2f}  |  Due: {inv.due_date or 'N/A'}")
+        console.print(f"[bold]Extraction[/] [dim](confidence: {ext.confidence:.0%})[/]")
+        console.print(f"  Total: {inv.currency} {inv.total:,.2f}  |  Due: {inv.due_date or 'N/A'}")
         if inv.items:
             item_table = Table(show_header=True, header_style="dim", box=None, padding=(0, 1))
             item_table.add_column("Item", style="cyan")
@@ -90,51 +85,46 @@ def render_result(result: PipelineResult, verbose: bool = False) -> None:
                 )
             console.print(item_table)
         if ext.issues:
-            lines.append(f"  Issues: {', '.join(ext.issues)}")
+            console.print(f"  Issues: {', '.join(ext.issues)}")
 
     if result.validation:
         val = result.validation
         risk_color = "green" if val.risk_score < 0.3 else "yellow" if val.risk_score < 0.6 else "red"
-        lines.append(f"\n[bold]Validation[/] (risk: [{risk_color}]{val.risk_score:.0%}[/])")
+        console.print(f"\n[bold]Validation[/] [dim](risk:[/] [{risk_color}]{val.risk_score:.0%}[/][dim])[/]")
         if val.data_issues:
             for issue in val.data_issues:
-                lines.append(f"  [yellow]⚠ {issue}[/]")
+                console.print(f"  [yellow]- {issue}[/]")
         if val.fraud_signals:
             for signal in val.fraud_signals:
-                lines.append(f"  [red]🚩 {signal}[/]")
+                console.print(f"  [red]- {signal}[/]")
         for check in val.inventory_checks:
             if check.issue:
-                lines.append(f"  [yellow]• {check.issue}[/]")
+                console.print(f"  [yellow]- {check.issue}[/]")
 
     if result.approval:
         appr = result.approval
-        lines.append(f"\n[bold]Approval[/] ({appr.risk_level})")
-        lines.append(f"  Reasoning: {appr.reasoning}")
+        console.print(f"\n[bold]Approval[/] [{decision_color}]{decision_label}[/] [dim](risk level: {appr.risk_level})[/]")
+        console.print(f"  Reasoning: {appr.reasoning}")
         if appr.reflection:
-            lines.append(f"  Reflection: {appr.reflection}")
+            console.print(f"  Reflection: {appr.reflection}")
 
     if result.payment:
         pay = result.payment
-        lines.append(f"\n[bold]Payment[/]")
-        lines.append(f"  {pay.reason or 'Processed'}")
+        console.print(f"\n[bold]Payment[/]")
+        console.print(f"  {pay.reason or 'Processed'}")
 
     if result.audit_log and verbose:
-        lines.append(f"\n[bold]Audit Trail[/]")
+        console.print(f"\n[bold]Audit Trail[/]")
         for i, entry in enumerate(result.audit_log):
             elapsed = ""
             if i > 0 and entry.timestamp and result.audit_log[i - 1].timestamp:
                 dt = entry.timestamp - result.audit_log[i - 1].timestamp
                 elapsed = f" [dim]({dt:.1f}s)[/]"
-            lines.append(f"  [dim]{entry.stage}:[/] {entry.detail}{elapsed}")
+            console.print(f"  [dim]{entry.stage}:[/] {entry.detail}{elapsed}")
         total_time = result.audit_log[-1].timestamp - result.audit_log[0].timestamp
-        lines.append(f"  [dim]Total: {total_time:.1f}s[/]")
+        console.print(f"  [dim]Total: {total_time:.1f}s[/]")
 
-    console.print(Panel(
-        "\n".join(lines),
-        title=str(header),
-        border_style=decision_color,
-        padding=(1, 2),
-    ))
+    console.print()
 
 
 def render_summary(results: list[PipelineResult]) -> None:
@@ -247,11 +237,8 @@ def main() -> None:
         console.print("[yellow]Inventory database not found — initializing...[/]")
         setup_database(db_path)
 
-    console.print(Panel(
-        "[bold]Galatiq Invoice Processing Pipeline[/]\n"
-        "Multi-agent system: Ingestion → Validation → Approval → Payment",
-        border_style="blue",
-    ))
+    console.rule("[bold]AutoInvoice[/]", style="blue")
+    console.print("[dim]Multi-agent pipeline: Ingestion, Validation, Approval, Payment[/]\n")
 
     results: list[PipelineResult] = []
 
