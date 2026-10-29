@@ -1,0 +1,12 @@
+MEGAWIDGETS CORP
+250 Commerce Way, Dallas, TX 75201
+
+Invoice No: INV-3007
+Date: 2026-03-01
+Customer: Acme Corp
+Payment Terms: Net 30
+
+  WidgetA   qty  0   @ $250.00 ea    $    0.00
+  WidgetB   qty  5   @ $-50.00 ea    $ -250.00
+
+Total Due: $-250.00

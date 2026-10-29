@@ -1,0 +1,13 @@
+CONSOLIDATED MATERIALS GROUP
+700 Industry Park Drive, Cleveland, OH 44114
+
+Invoice No: INV-3004
+Date: 2026-02-15
+Customer: Acme Corp
+Payment Terms: Net 30
+
+  WidgetA   qty 100   @ $250.00 ea    $25,000.00
+  WidgetB   qty  60   @ $500.00 ea    $30,000.00
+
+Subtotal: $55,000.00
+Total Due: $55,000.00

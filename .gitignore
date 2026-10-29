@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.env
+inventory.db
+acme_erp.db
+results.jsonl
+*.egg-info/
+dist/
+build/
+.streamlit/

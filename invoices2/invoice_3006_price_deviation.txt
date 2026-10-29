@@ -1,0 +1,13 @@
+WIDGETS INC.
+123 Factory Lane, Chicago, IL 60601
+
+Invoice No: INV-3006
+Date: 2026-02-25
+Customer: Acme Corp
+Payment Terms: Net 15
+
+  WidgetA   qty 10   @ $350.00 ea    $3,500.00
+  GadgetX   qty  2   @ $400.00 ea    $  800.00
+
+Subtotal: $4,300.00
+Total Due: $4,300.00

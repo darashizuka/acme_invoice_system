@@ -1,0 +1,12 @@
+SUNSET SUPPLIES LLC
+42 Elm Street, Portland, OR 97201
+
+Invoice No: INV-3001
+Date: 2026-01-20
+Customer: Acme Corp
+Payment Terms: Net 30
+
+  WidgetA   qty 5   @ $250.00 ea    $1,250.00
+
+Subtotal: $1,250.00
+Total Due: $1,250.00

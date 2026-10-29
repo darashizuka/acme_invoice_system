@@ -1,0 +1,7 @@
+INVOICE
+
+Date: 2026-02-20
+
+  WidgetA   qty 5   @ $250.00 ea    $1,250.00
+
+Total: $1,250.00

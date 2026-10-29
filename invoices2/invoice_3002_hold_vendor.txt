@@ -1,0 +1,12 @@
+PENDING PARTNERS INC.
+888 Commerce Blvd, Austin, TX 78701
+
+Invoice No: INV-3002
+Date: 2026-02-05
+Customer: Acme Corp
+Payment Terms: Net 30
+
+  GadgetX   qty 3   @ $750.00 ea    $2,250.00
+
+Subtotal: $2,250.00
+Total Due: $2,250.00

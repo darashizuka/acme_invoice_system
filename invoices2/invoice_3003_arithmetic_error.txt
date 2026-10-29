@@ -1,0 +1,14 @@
+WIDGETS INC.
+123 Factory Lane, Chicago, IL 60601
+
+Invoice No: INV-3003
+Date: 2026-02-10
+Customer: Acme Corp
+Payment Terms: Net 15
+
+  WidgetA   qty 10   @ $250.00 ea    $2,500.00
+  WidgetB   qty  3   @ $500.00 ea    $1,500.00
+
+Subtotal: $4,000.00
+Tax (8%): $320.00
+Total Due: $4,800.00
