@@ -33,7 +33,7 @@ A multi-agent system that automates end-to-end invoice processing from raw docum
 
 ### Key Design Decisions
 
-1. **Deterministic code vs LLM judgment** — Code handles what it can prove: vendor lookup, item matching, arithmetic checks, pricing deviations, duplicate detection. The LLM handles what requires judgment: fraud assessment, risk scoring, overall pass/fail. Code results are passed as evidence to the LLM — the LLM reasons over them, but code never second-guesses the LLM's conclusions on judgment calls.
+1. **Deterministic code vs LLM judgment** — Code handles what it can prove: vendor lookup, item matching, arithmetic checks, pricing deviations, duplicate detection. The LLM handles what requires judgment: fraud assessment, risk scoring, overall pass/fail. Code results are passed as evidence to the LLM. The LLM reasons over them, but code never second-guesses the LLM's conclusions on judgment calls.
 
 2. **Self-correction loop** — If validation finds items that look like misspellings of known inventory items, the workflow loops back to ingestion with targeted feedback. Max 2 retries to prevent infinite loops.
 
