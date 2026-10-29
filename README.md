@@ -1,4 +1,4 @@
-# Galatiq Invoice Processing Pipeline
+# Acme Invoice Processing Pipeline
 
 A multi-agent system that automates end-to-end invoice processing from raw document ingestion through validation, approval, and payment using **xAI's Grok** as the reasoning engine and **LangGraph** for orchestration.
 
