@@ -9,14 +9,14 @@ A multi-agent system that automates end-to-end invoice processing from raw docum
                           │      LangGraph Workflow       │
                           └──────────────────────────────┘
                                        │
-    ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-    │ Ingestion│──>│Validation│──>│ Approval │──>│ Payment  │
-    │  Agent   │<──│  Agent   │   │  Agent   │   │  Agent   │
-    │          │   │          │   │(Reflect) │   │          │
-    │• Parse   │   │• Check DB│   │• Rules   │   │• Pay     │
-    │• Extract │   │• Flag    │   │• LLM     │   │• Reject  │
-    │• Struct  │   │• Risk    │   │• Critique│   │• Hold    │
-    └──────────┘   └──────────┘   └──────────┘   └──────────┘
+    ┌──────────┐   ┌──────────┐   ┌─────────────┐   ┌──────────┐
+    │ Ingestion│──>│Validation│──>│  Approval   │──>│ Payment  │
+    │  Agent   │<──│  Agent   │   │    Agent    │   │  Agent   │
+    │          │   │          │   │ (Tool Use)  │   │          │
+    │• Parse   │   │• Check DB│   │• Investigate│   │• Pay     │
+    │• Extract │   │• Flag    │   │• Decide     │   │• Reject  │
+    │• Struct  │   │• Risk    │   │• Reflect    │   │• Hold    │
+    └──────────┘   └──────────┘   └─────────────┘   └──────────┘
          ↑               │
          └───────────────┘
          Self-correction loop
@@ -37,17 +37,17 @@ This system addresses Acme Corp's $2M/year problem:
 | Agent | Role | LLM Use | Tools |
 |-------|------|---------|-------|
 | **Ingestion** | Extract structured data from raw invoices (TXT, JSON, CSV, PDF, XML, scanned images) | Structured output with Pydantic schema; multimodal vision for scanned docs | File parsers, base64 image encoding |
-| **Validation** | Verify vendor, items, pricing, arithmetic against ERP database; assess risk | Risk assessment reasoning over code-computed evidence | SQLite queries (vendor master, item master, inventory, FX rates) |
-| **Approval** | Three-tier approval ($10K auto / $10K-$50K VP / $50K+ CFO) with reflection loop | Two-pass: VP reasoning + senior auditor critique | Rule engine, safety overrides |
+| **Validation** | Verify vendor, items, pricing, arithmetic against ERP database; assess risk | Deterministic code checks + LLM structured risk assessment | Direct DB calls: `lookup_vendor`, `check_item`, `check_duplicate`, `get_fx_rate`, `get_all_items` |
+| **Approval** | Three-tier approval ($10K auto / $10K-$50K VP / $50K+ CFO) with tool-use investigation and reflection loop | Three-phase: LLM-driven tool investigation (ReAct loop with `bind_tools`) + VP structured decision + senior auditor reflection | `lookup_vendor`, `get_vendor_history` (bound as LangChain tools), rule engine, safety overrides |
 | **Payment** | Process approved invoices, hold flagged ones, reject bad ones; record to DB | None (deterministic) | Payment recording, duplicate tracking |
 
 ### Key Design Decisions
 
-1. **Deterministic code vs LLM judgment** — Code handles what it can prove: vendor lookup, item matching, arithmetic checks, pricing deviations, duplicate detection. The LLM handles what requires judgment: fraud assessment, risk scoring, overall pass/fail. Code results are passed as evidence to the LLM — the LLM reasons over them, but code never second-guesses the LLM's conclusions on judgment calls.
+1. **Deterministic validation with LLM risk scoring** — The validation agent runs deterministic code checks (vendor lookup, inventory matching, arithmetic verification, pricing deviation detection, fraud keyword scanning, duplicate detection) against the ERP database. Results are passed to the LLM for a structured risk assessment. This keeps validation fast, reliable, and auditable — every check is programmatic and reproducible.
 
 2. **Self-correction loop** — If validation finds items that look like misspellings of known inventory items, the workflow loops back to ingestion with targeted feedback. Max 2 retries to prevent infinite loops.
 
-3. **Reflection in approval** — The approval agent runs two LLM passes: initial VP reasoning, then a senior auditor critique. This catches blind spots and produces better-reasoned decisions.
+3. **Three-phase approval with tool use** — The approval agent runs three phases. First, the LLM autonomously investigates the invoice using bound ERP tools (`lookup_vendor`, `get_vendor_history`) via LangChain's `bind_tools` in a ReAct-style loop — the VP independently verifies vendor status and checks for patterns in past invoices. Second, the LLM makes a structured approval decision informed by both the investigation and validation results. Third, a senior auditor LLM critiques the decision (reflection loop). Tool use is in the approval agent rather than validation because vendor due diligence is a subjective business judgment, not a deterministic check.
 
 4. **Safety overrides on deterministic facts only** — Code overrides LLM approvals only for provably wrong decisions: duplicate invoices (reject) and unknown vendors (hold). Fraud signals and risk scores are LLM judgment and are never auto-overridden. This prevents both false-positive rejections and false-negative approvals.
 
@@ -181,8 +181,8 @@ The system handles all edge cases (expanded test cases in invoices2 folder):
 ├── .env.example         # Environment variable template
 ├── agents/
 │   ├── ingestion.py     # LLM-based data extraction (text + multimodal vision)
-│   ├── validation.py    # ERP validation + LLM risk assessment
-│   ├── approval.py      # Three-tier approval with reflection loop
+│   ├── validation.py    # Deterministic ERP checks + LLM risk assessment
+│   ├── approval.py      # Three-tier approval with tool-use investigation + reflection loop
 │   └── payment.py       # Payment processing with DB recording
 ├── graph/
 │   └── workflow.py      # LangGraph StateGraph with self-correction loop

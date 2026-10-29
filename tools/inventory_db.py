@@ -219,3 +219,21 @@ def get_fx_rate(
     row = cursor.fetchone()
     conn.close()
     return dict(row)["usd_per_unit"] if row else None
+
+
+def get_vendor_history(
+    vendor_name: str,
+    db_path: str | None = None,
+) -> list[dict]:
+    """Get processing history for a vendor from the processed_invoices table."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    norm = normalize_vendor_name(vendor_name)
+    cursor.execute("SELECT * FROM processed_invoices ORDER BY processed_on DESC")
+    results = []
+    for row in cursor.fetchall():
+        r = dict(row)
+        if normalize_vendor_name(r["vendor_name"]) == norm:
+            results.append(r)
+    conn.close()
+    return results

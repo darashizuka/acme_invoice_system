@@ -1,11 +1,13 @@
-"""Approval agent — three-tier approval with rule-based checks and LLM reflection loop."""
+"""Approval agent — three-tier approval with tool-use investigation, rule-based checks, and LLM reflection loop."""
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.tools import tool
 
 from config import CFO_APPROVAL_THRESHOLD, VP_APPROVAL_THRESHOLD, get_llm
 from models.schemas import (
@@ -13,8 +15,46 @@ from models.schemas import (
     ExtractionResult,
     ValidationResult,
 )
+from tools import inventory_db
 
 logger = logging.getLogger(__name__)
+
+# --- Tool definitions for VP investigation ---
+
+@tool
+def tool_lookup_vendor(vendor_name: str) -> str:
+    """Look up a vendor in the ERP vendor master database. Returns vendor details including status (active/inactive/hold), currency, and payment terms."""
+    result = inventory_db.lookup_vendor(vendor_name)
+    if result is None:
+        return json.dumps({"found": False, "vendor_name": vendor_name})
+    return json.dumps(result)
+
+
+@tool
+def tool_get_vendor_history(vendor_name: str) -> str:
+    """Get the processing history for a vendor — past invoices, their decisions (paid/rejected/held), and amounts."""
+    history = inventory_db.get_vendor_history(vendor_name)
+    if not history:
+        return json.dumps({"vendor_name": vendor_name, "history": [], "note": "No prior invoices found"})
+    return json.dumps({"vendor_name": vendor_name, "history": history})
+
+
+APPROVAL_TOOLS = [tool_lookup_vendor, tool_get_vendor_history]
+TOOL_MAP = {t.name: t for t in APPROVAL_TOOLS}
+MAX_TOOL_ITERATIONS = 10
+
+INVESTIGATION_PROMPT = """\
+You are a VP of Finance investigating an invoice before making an approval decision. \
+You have access to the company's ERP database through tools.
+
+You MUST call these tools to investigate before deciding:
+1. tool_lookup_vendor — independently verify the vendor's current status in the vendor master
+2. tool_get_vendor_history — check this vendor's past invoices and their outcomes \
+   (look for patterns: repeated rejections, escalating amounts, recent holds)
+
+After investigating, summarize your findings. Focus on anything that would change \
+your approval decision — vendor reliability, unusual patterns, status discrepancies \
+with what validation reported."""
 
 REASONING_PROMPT = """\
 You are a VP of Finance reviewing an invoice for approval. You must decide whether \
@@ -153,21 +193,81 @@ def run_approval(
     return {"approval": decision}
 
 
+def _run_vp_investigation(extraction: ExtractionResult, validation: ValidationResult) -> str:
+    """VP investigates the invoice using ERP tools before making a decision."""
+    llm = get_llm(temperature=0)
+    try:
+        llm_with_tools = llm.bind_tools(APPROVAL_TOOLS)
+    except (AttributeError, NotImplementedError):
+        logger.debug("LLM does not support tool binding, skipping investigation phase")
+        return ""
+
+    invoice = extraction.invoice
+    amount_usd = validation.usd_total or invoice.total
+
+    invoice_summary = (
+        f"Invoice: {invoice.invoice_number}\n"
+        f"Vendor: {invoice.vendor}\n"
+        f"Amount: {invoice.currency} {invoice.total:,.2f} (USD {amount_usd:,.2f})\n"
+        f"Risk score: {validation.risk_score:.2f}\n"
+        f"Validation passed: {validation.passed}\n"
+        f"Fraud signals: {validation.fraud_signals}\n"
+        f"Data issues: {validation.data_issues}"
+    )
+
+    messages: list = [
+        SystemMessage(content=INVESTIGATION_PROMPT),
+        HumanMessage(content=f"Investigate this invoice before approving:\n\n{invoice_summary}"),
+    ]
+
+    for _ in range(MAX_TOOL_ITERATIONS):
+        response: AIMessage = llm_with_tools.invoke(messages)
+        messages.append(response)
+
+        if not response.tool_calls:
+            break
+
+        for tc in response.tool_calls:
+            tool_fn = TOOL_MAP.get(tc["name"])
+            if tool_fn:
+                result = tool_fn.invoke(tc["args"])
+                messages.append(ToolMessage(content=result, tool_call_id=tc["id"]))
+                logger.debug("Tool call: %s(%s) -> %s", tc["name"], tc["args"], result[:200])
+            else:
+                messages.append(ToolMessage(content="Unknown tool", tool_call_id=tc["id"]))
+
+    parts = []
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            parts.append(f"[Tool result] {msg.content}")
+        elif isinstance(msg, AIMessage) and msg.content:
+            parts.append(f"[VP investigation] {msg.content}")
+    return "\n".join(parts)
+
+
 def _vp_review(
     extraction: ExtractionResult,
     validation: ValidationResult,
 ) -> ApprovalDecision:
-    """Run VP-level LLM review with reflection loop."""
+    """Run VP-level review: tool investigation → structured decision → reflection."""
+    # Phase 1: VP investigates using ERP tools
+    investigation = _run_vp_investigation(extraction, validation)
+    logger.info("VP investigation complete for %s", extraction.invoice.invoice_number)
+
+    # Phase 2: Structured approval decision
     llm = get_llm(temperature=0)
     structured_llm = llm.with_structured_output(ApprovalDecision)
 
     context = _build_context(extraction, validation)
+    if investigation:
+        context += f"\n\n=== VP INVESTIGATION (tool-use results) ===\n{investigation}"
 
     initial_decision: ApprovalDecision = structured_llm.invoke([
         SystemMessage(content=REASONING_PROMPT),
         HumanMessage(content=context),
     ])
 
+    # Phase 3: Reflection / audit
     reflection_input = REFLECTION_PROMPT.format(
         decision=initial_decision.decision,
         risk_level=initial_decision.risk_level,
@@ -263,7 +363,6 @@ def _apply_override(
     if validation.vendor_check and not validation.vendor_check.found_in_system:
         reasons.append("vendor not in vendor master")
 
-    # Duplicates are deterministic — reject outright, no human review needed
     if validation.is_duplicate:
         logger.warning(
             "Safety override: duplicate invoice — rejecting",
