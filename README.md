@@ -62,7 +62,7 @@ This system addresses Acme Corp's $2M/year problem:
 ## Quick Start
 
 ```bash
-# 1. Clone and enter the repo
+# 1. Clone the main branch and enter the repo
 git clone https://github.com/darashizuka/acme_invoice_system.git
 cd acme_invoice_system
 
