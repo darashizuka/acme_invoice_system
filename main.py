@@ -223,7 +223,7 @@ def main() -> None:
     parser.add_argument("--batch", type=str, help="Directory of invoices to process in batch")
     parser.add_argument("--out", type=str, help="Output path for JSON Lines results")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
-    parser.add_argument("--db", type=str, help="Path to inventory database (default: inventory.db)")
+    parser.add_argument("--db", type=str, help="Path to ERP database (default: acme_erp.db)")
 
     args = parser.parse_args()
     setup_logging(args.verbose)

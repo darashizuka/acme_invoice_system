@@ -70,6 +70,7 @@ cd acme_invoice_system
 python -m venv venv
 source venv/bin/activate       # Linux/Mac
 source venv/Scripts/activate   # Windows (Git Bash)
+.\venv\Scripts\activate        # powershell
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -121,13 +122,13 @@ python main.py --invoice_path=data/invoices/invoice_1001.txt
 python main.py --batch=invoices3
 
 # Export results as JSON Lines
-python main.py --batch=data/invoices --out=results.jsonl
+python main.py --batch=invoices3 --out=results.jsonl
 
 # Verbose logging
 python main.py --invoice_path=data/invoices/invoice_1003.txt --verbose
 
 # Custom database path
-python main.py --batch=data/invoices --db=custom_inventory.db
+python main.py --batch=invoices3 --db=acme_erp.db
 ```
 
 ## Streamlit Dashboard
